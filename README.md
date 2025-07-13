@@ -71,142 +71,183 @@
 
 ```mermaid
 graph TD
-    A[Google Sheets] --> B[Apps Script]
-    B --> C[Code.gs Backend]
-    B --> D[Sidebar.html Frontend]
-    B --> E[Google Forms]
+    %% 主要系統組件
+    A[📊 Google Sheets] --> B[⚙️ Apps Script]
+    B --> C[🔧 Code.gs Backend]
+    B --> D[🎨 Sidebar.html Frontend]
+    B --> E[📝 Google Forms]
     
-    C --> F[onOpen Function]
-    C --> G[showSidebar Function]
-    C --> H[readExchangeData Function]
-    C --> I[appendData Function]
-    C --> J[getSummaryStats Function]
-    C --> K[onFormSubmit Function]
-    C --> L[setupTrigger Function]
+    %% 後端功能模組
+    C --> F[🏠 onOpen Function]
+    C --> G[📋 showSidebar Function]
+    C --> H[📖 readExchangeData Function]
+    C --> I[➕ appendData Function]
+    C --> J[📊 getSummaryStats Function]
+    C --> K[📤 onFormSubmit Function]
+    C --> L[🔗 setupTrigger Function]
     
-    D --> M[Google Charts Library]
-    D --> N[Form Input]
-    D --> O[Chart Display]
-    D --> P[Summary Display]
+    %% 前端功能模組
+    D --> M[📈 Google Charts Library]
+    D --> N[📝 Form Input]
+    D --> O[📊 Chart Display]
+    D --> P[📋 Summary Display]
     
-    E --> Q[Form Submission]
+    %% Form 整合
+    E --> Q[📤 Form Submission]
     Q --> K
     
-    F --> R[Create Menu '匯率工具']
-    G --> S[Show Sidebar UI]
-    H --> T[Read Sheet Data]
-    I --> U[Write Data to Sheet]
-    J --> V[Get Summary Statistics]
-    K --> W[Process Form Data]
-    L --> X[Setup Form Trigger]
+    %% 功能實現
+    F --> R[🎯 Create Menu '匯率工具']
+    G --> S[🖥️ Show Sidebar UI]
+    H --> T[📖 Read Sheet Data]
+    I --> U[✍️ Write Data to Sheet]
+    J --> V[📊 Get Summary Statistics]
+    K --> W[⚙️ Process Form Data]
+    L --> X[🔗 Setup Form Trigger]
     
-    N --> Y[Date Input]
-    N --> Z[Rate Input]
-    N --> AA[TWD Amount Input]
+    %% 資料輸入流程
+    N --> Y[📅 Date Input]
+    N --> Z[💱 Rate Input]
+    N --> AA[💰 TWD Amount Input]
     
-    Y --> BB[submitData Function]
+    Y --> BB[📤 submitData Function]
     Z --> BB
     AA --> BB
     
-    BB --> CC[Data Validation]
-    CC --> DD{Validation Pass?}
-    DD -->|Yes| EE[Call appendData]
-    DD -->|No| FF[Show Error Message]
+    %% 驗證流程
+    BB --> CC[✅ Data Validation]
+    CC --> DD{❓ Validation Pass?}
+    DD -->|✅ Yes| EE[📞 Call appendData]
+    DD -->|❌ No| FF[⚠️ Show Error Message]
     
+    %% 資料處理流程
     EE --> U
-    U --> GG[Calculate USD = TWD/Rate]
-    GG --> HH[Append Row to Sheet]
-    HH --> II[Success Message]
-    II --> JJ[Reset Form]
-    JJ --> KK[Auto Refresh Chart]
+    U --> GG[🧮 Calculate USD = TWD/Rate]
+    GG --> HH[📝 Append Row to Sheet]
+    HH --> II[✅ Success Message]
+    II --> JJ[🔄 Reset Form]
+    JJ --> KK[🔄 Auto Refresh Chart]
     
-    KK --> LL[loadData Function]
-    LL --> MM[Call readExchangeData]
-    LL --> NN[Call getSummaryStats]
+    %% 圖表更新流程
+    KK --> LL[📊 loadData Function]
+    LL --> MM[📞 Call readExchangeData]
+    LL --> NN[📞 Call getSummaryStats]
     MM --> T
     NN --> V
-    T --> OO[Parse Data]
-    V --> PP[Update Summary Display]
-    OO --> QQ[drawChart Function]
-    QQ --> RR[Create Google Chart]
+    T --> OO[🔍 Parse Data]
+    V --> PP[📋 Update Summary Display]
+    OO --> QQ[📈 drawChart Function]
+    QQ --> RR[🎨 Create Google Chart]
     RR --> O
     
-    SS[Manual Load Button] --> LL
+    %% 手動載入
+    SS[🔄 Manual Load Button] --> LL
+    
+    %% 樣式設定
+    classDef systemComponent fill:#e1f5fe,stroke:#01579b,stroke-width:2px
+    classDef backendFunction fill:#f3e5f5,stroke:#4a148c,stroke-width:2px
+    classDef frontendFunction fill:#e8f5e8,stroke:#1b5e20,stroke-width:2px
+    classDef dataFlow fill:#fff3e0,stroke:#e65100,stroke-width:2px
+    classDef validationNode fill:#ffebee,stroke:#c62828,stroke-width:2px
+    classDef chartNode fill:#f1f8e9,stroke:#33691e,stroke-width:2px
+    
+    class A,B systemComponent
+    class C,F,G,H,I,J,K,L backendFunction
+    class D,M,N,O,P frontendFunction
+    class Y,Z,AA,BB,CC,DD,EE,FF,GG,HH,II,JJ,KK dataFlow
+    class DD validationNode
+    class LL,MM,NN,OO,PP,QQ,RR chartNode
 ```
 
 ### 資料流程圖
 
 ```mermaid
 sequenceDiagram
-    participant User
-    participant Sidebar
-    participant Code.gs
-    participant GoogleSheets
-    participant GoogleForm
+    participant User as 👤 User
+    participant Sidebar as 🎨 Sidebar
+    participant Code.gs as 🔧 Code.gs
+    participant GoogleSheets as 📊 GoogleSheets
+    participant GoogleForm as 📝 GoogleForm
     
-    Note over User,GoogleForm: 初始化流程
-    GoogleSheets->>Code.gs: onOpen()
-    Code.gs->>GoogleSheets: Create Menu
+    Note over User,GoogleForm: 🚀 初始化流程
+    GoogleSheets->>Code.gs: 📞 onOpen()
+    Code.gs->>GoogleSheets: 🎯 Create Menu
     
-    Note over User,GoogleForm: 開啟側邊欄
-    User->>GoogleSheets: Click Menu
-    GoogleSheets->>Code.gs: showSidebar()
-    Code.gs->>Sidebar: Load HTML Interface
+    Note over User,GoogleForm: 📋 開啟側邊欄
+    User->>GoogleSheets: 🖱️ Click Menu
+    GoogleSheets->>Code.gs: 📞 showSidebar()
+    Code.gs->>Sidebar: 🎨 Load HTML Interface
     
-    Note over User,GoogleForm: 側邊欄資料輸入流程
-    User->>Sidebar: Fill Form (Date, Rate, TWD)
-    Sidebar->>Sidebar: submitData() - Validation
-    Sidebar->>Code.gs: appendData(date, rate, twd)
-    Code.gs->>Code.gs: Validate Input
-    Code.gs->>Code.gs: Calculate USD = TWD/Rate
-    Code.gs->>GoogleSheets: Append Row [Date, Rate, TWD, USD]
-    Code.gs->>Sidebar: Success Response
-    Sidebar->>Sidebar: Reset Form & Auto Refresh
+    Note over User,GoogleForm: 📝 側邊欄資料輸入流程
+    User->>Sidebar: 📝 Fill Form (Date, Rate, TWD)
+    Sidebar->>Sidebar: ✅ submitData() - Validation
+    Sidebar->>Code.gs: 📤 appendData(date, rate, twd)
+    Code.gs->>Code.gs: 🔍 Validate Input
+    Code.gs->>Code.gs: 🧮 Calculate USD = TWD/Rate
+    Code.gs->>GoogleSheets: 📝 Append Row [Date, Rate, TWD, USD]
+    Code.gs->>Sidebar: ✅ Success Response
+    Sidebar->>Sidebar: 🔄 Reset Form & Auto Refresh
     
-    Note over User,GoogleForm: Google Form 提交流程
-    User->>GoogleForm: Submit Form Data
-    GoogleForm->>Code.gs: onFormSubmit(formData)
-    Code.gs->>Code.gs: Validate Form Data
-    Code.gs->>Code.gs: Calculate USD = TWD/Rate
-    Code.gs->>GoogleSheets: Append Row [Date, Rate, TWD, USD]
+    Note over User,GoogleForm: 📤 Google Form 提交流程
+    User->>GoogleForm: 📤 Submit Form Data
+    GoogleForm->>Code.gs: 📤 onFormSubmit(formData)
+    Code.gs->>Code.gs: 🔍 Validate Form Data
+    Code.gs->>Code.gs: 🧮 Calculate USD = TWD/Rate
+    Code.gs->>GoogleSheets: 📝 Append Row [Date, Rate, TWD, USD]
     
-    Note over User,GoogleForm: 圖表顯示流程
-    User->>Sidebar: Click "讀取並繪製雙軸圖"
-    Sidebar->>Code.gs: readExchangeData()
-    Sidebar->>Code.gs: getSummaryStats()
-    Code.gs->>GoogleSheets: Get All Data
-    Code.gs->>GoogleSheets: Get Summary Data
-    GoogleSheets->>Code.gs: Return Data Arrays
-    Code.gs->>Sidebar: Return Formatted Data
-    Sidebar->>Sidebar: Parse Data & drawChart()
-    Sidebar->>Sidebar: Create Google Chart
-    Sidebar->>Sidebar: Update Summary Display
-    Sidebar->>User: Display Dual-Axis Chart & Stats
+    Note over User,GoogleForm: 📊 圖表顯示流程
+    User->>Sidebar: 🖱️ Click "讀取並繪製雙軸圖"
+    Sidebar->>Code.gs: 📞 readExchangeData()
+    Sidebar->>Code.gs: 📞 getSummaryStats()
+    Code.gs->>GoogleSheets: 📖 Get All Data
+    Code.gs->>GoogleSheets: 📊 Get Summary Data
+    GoogleSheets->>Code.gs: 📄 Return Data Arrays
+    Code.gs->>Sidebar: 📄 Return Formatted Data
+    Sidebar->>Sidebar: 🔍 Parse Data & drawChart()
+    Sidebar->>Sidebar: 🎨 Create Google Chart
+    Sidebar->>Sidebar: 📋 Update Summary Display
+    Sidebar->>User: 📊 Display Dual-Axis Chart & Stats
 ```
 
 ### 錯誤處理流程
 
 ```mermaid
 flowchart TD
-    A[User Input] --> B{Date Valid?}
-    B -->|No| C[Show Error: 日期格式錯誤]
-    B -->|Yes| D{Rate > 0?}
-    D -->|No| E[Show Error: 匯率必須大於0]
-    D -->|Yes| F{TWD >= 0?}
-    F -->|No| G[Show Error: 交易金額必須>=0]
-    F -->|Yes| H[Process Data]
-    H --> I[Write to Sheet]
-    I --> J[Success Message]
+    %% 主要輸入驗證流程
+    A[📝 User Input] --> B{❓ Date Valid?}
+    B -->|❌ No| C[⚠️ Show Error: 日期格式錯誤]
+    B -->|✅ Yes| D{❓ Rate > 0?}
+    D -->|❌ No| E[⚠️ Show Error: 匯率必須大於0]
+    D -->|✅ Yes| F{❓ TWD >= 0?}
+    F -->|❌ No| G[⚠️ Show Error: 交易金額必須>=0]
+    F -->|✅ Yes| H[⚙️ Process Data]
+    H --> I[📝 Write to Sheet]
+    I --> J[✅ Success Message]
     
-    C --> K[Stay on Form]
+    %% 錯誤處理分支
+    C --> K[🔄 Stay on Form]
     E --> K
     G --> K
-    J --> L[Reset Form & Refresh Chart]
+    J --> L[🔄 Reset Form & Refresh Chart]
     
-    M[Form Submission] --> N{Form Data Valid?}
-    N -->|No| O[Log Error & Skip]
-    N -->|Yes| P[Process Form Data]
-    P --> Q[Write to Sheet]
+    %% Form 提交驗證流程
+    M[📤 Form Submission] --> N{❓ Form Data Valid?}
+    N -->|❌ No| O[📝 Log Error & Skip]
+    N -->|✅ Yes| P[⚙️ Process Form Data]
+    P --> Q[📝 Write to Sheet]
+    
+    %% 樣式設定
+    classDef inputNode fill:#e3f2fd,stroke:#1976d2,stroke-width:2px
+    classDef validationNode fill:#fff3e0,stroke:#f57c00,stroke-width:2px
+    classDef errorNode fill:#ffebee,stroke:#d32f2f,stroke-width:2px
+    classDef successNode fill:#e8f5e9,stroke:#388e3c,stroke-width:2px
+    classDef processNode fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px
+    
+    class A inputNode
+    class B,D,F,N validationNode
+    class C,E,G,O errorNode
+    class J successNode
+    class H,P processNode
 ```
 
 ## 📊 Google Sheet 範例格式
