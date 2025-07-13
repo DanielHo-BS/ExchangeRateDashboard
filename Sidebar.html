@@ -18,11 +18,12 @@
 
     <button onclick="loadData()">讀取並繪製雙軸圖</button>
 
+    <div id="summary" style="margin-top: 20px; font-weight: bold;"></div>
     <div id="chart_div" style="width: 100%; height: 400px; margin-top: 20px;"></div>
     <div id="status" style="margin-top: 10px; color: green;"></div>
 
     <script>
-      google.charts.load('current', {'packages':['corechart']});
+      google.charts.load('current', { 'packages': ['corechart'] });
 
       function submitData(e) {
         e.preventDefault();
@@ -35,11 +36,10 @@
           return;
         }
 
-        // 呼叫 GAS 寫入資料
         google.script.run.withSuccessHandler(() => {
           document.getElementById('status').textContent = '資料新增成功！';
           document.getElementById('inputForm').reset();
-          loadData();  // 新增完馬上更新圖表
+          loadData();
         }).withFailureHandler(err => {
           document.getElementById('status').style.color = 'red';
           document.getElementById('status').textContent = '新增失敗: ' + err.message;
@@ -49,6 +49,7 @@
       function loadData() {
         document.getElementById('status').textContent = '';
         google.script.run.withSuccessHandler(drawChart).readExchangeData();
+        google.script.run.withSuccessHandler(updateSummary).getSummaryStats();
       }
 
       function drawChart(data) {
@@ -59,7 +60,7 @@
           const rateMatch = line.match(/Rate:\s*([\d.]+)/);
           const twdMatch = line.match(/TWD:\s*([\d.]+)/);
 
-          if(dateMatch && rateMatch && twdMatch) {
+          if (dateMatch && rateMatch && twdMatch) {
             const date = new Date(dateMatch[1]);
             const rate = parseFloat(rateMatch[1]);
             const twd = parseFloat(twdMatch[1]);
@@ -86,6 +87,15 @@
 
         const chart = new google.visualization.LineChart(document.getElementById('chart_div'));
         chart.draw(dataTable, options);
+      }
+
+      function updateSummary(stats) {
+        const summaryDiv = document.getElementById('summary');
+        summaryDiv.innerHTML = `
+          📊 總投入 TWD：${Number(stats.totalTWD).toLocaleString()}<br>
+          💵 總換得 USD：${Number(stats.totalUSD).toFixed(2)}<br>
+          📈 平均匯率：${Number(stats.averageRate).toFixed(4)}
+        `;
       }
     </script>
   </body>
