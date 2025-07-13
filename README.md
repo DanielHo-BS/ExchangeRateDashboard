@@ -1,5 +1,8 @@
 # Exchange Rate Dashboard (Google Apps Script)
 
+> 📊 **A comprehensive exchange rate and transaction management tool built with Google Apps Script**  
+> Track TWD/USD exchange rates, manage transaction amounts, and visualize data with interactive dual-axis charts. Perfect for personal finance tracking and currency exchange monitoring.
+
 這是一個使用 Google Apps Script 製作的匯率與交易金額管理工具。
 
 ## 📋 功能特色
