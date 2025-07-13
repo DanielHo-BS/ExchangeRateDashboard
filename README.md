@@ -11,6 +11,14 @@
 - ✅ 日期欄格式固定只顯示年月日
 - ✅ 即時圖表更新和表單重置
 
+## 📸 系統截圖
+
+<div align="center">
+  <img src="./images/exchange.png" alt="匯率儀表板系統截圖" width="800" style="border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.1);">
+  <br>
+  <em>匯率儀表板系統介面 - 支援資料輸入與雙軸圖表顯示</em>
+</div>
+
 ## 🚀 使用方式
 
 ### 步驟 1: 設定 Google Apps Script
