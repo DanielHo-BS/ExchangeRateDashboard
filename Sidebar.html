@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <base target="_top">
+    <script type="text/javascript" src="https://www.gstatic.com/charts/loader.js"></script>
+  </head>
+  <body>
+    <h3>匯率與交易金額管理</h3>
+
+    <form id="inputForm" onsubmit="submitData(event)">
+      <label>日期 (yyyy-mm-dd): <input type="date" id="dateInput" required></label><br><br>
+      <label>匯率 (TWD/USD): <input type="number" step="0.0001" id="rateInput" required></label><br><br>
+      <label>TWD 交易額: <input type="number" step="1" id="twdInput" required></label><br><br>
+      <button type="submit">新增資料</button>
+    </form>
+
+    <hr>
+
+    <button onclick="loadData()">讀取並繪製雙軸圖</button>
+
+    <div id="chart_div" style="width: 100%; height: 400px; margin-top: 20px;"></div>
+    <div id="status" style="margin-top: 10px; color: green;"></div>
+
+    <script>
+      google.charts.load('current', {'packages':['corechart']});
+
+      function submitData(e) {
+        e.preventDefault();
+        const date = document.getElementById('dateInput').value;
+        const rate = parseFloat(document.getElementById('rateInput').value);
+        const twd = parseFloat(document.getElementById('twdInput').value);
+
+        if (!date || isNaN(rate) || isNaN(twd)) {
+          alert('請正確填寫所有欄位');
+          return;
+        }
+
+        // 呼叫 GAS 寫入資料
+        google.script.run.withSuccessHandler(() => {
+          document.getElementById('status').textContent = '資料新增成功！';
+          document.getElementById('inputForm').reset();
+          loadData();  // 新增完馬上更新圖表
+        }).withFailureHandler(err => {
+          document.getElementById('status').style.color = 'red';
+          document.getElementById('status').textContent = '新增失敗: ' + err.message;
+        }).appendData(date, rate, twd);
+      }
+
+      function loadData() {
+        document.getElementById('status').textContent = '';
+        google.script.run.withSuccessHandler(drawChart).readExchangeData();
+      }
+
+      function drawChart(data) {
+        const chartData = [['Date', 'Rate', 'TWD Amount']];
+
+        data.forEach(line => {
+          const dateMatch = line.match(/Date:\s*([\w\s:-]+)/);
+          const rateMatch = line.match(/Rate:\s*([\d.]+)/);
+          const twdMatch = line.match(/TWD:\s*([\d.]+)/);
+
+          if(dateMatch && rateMatch && twdMatch) {
+            const date = new Date(dateMatch[1]);
+            const rate = parseFloat(rateMatch[1]);
+            const twd = parseFloat(twdMatch[1]);
+            chartData.push([date, rate, twd]);
+          }
+        });
+
+        const dataTable = google.visualization.arrayToDataTable(chartData);
+
+        const options = {
+          title: '匯率與交易金額雙軸圖',
+          curveType: 'function',
+          legend: { position: 'bottom' },
+          hAxis: { format: 'yyyy-MM-dd' },
+          vAxes: {
+            0: { title: '匯率 (TWD/USD)' },
+            1: { title: '交易金額 (TWD)' }
+          },
+          series: {
+            0: { targetAxisIndex: 0, color: '#1f77b4' },
+            1: { targetAxisIndex: 1, color: '#ff7f0e' }
+          }
+        };
+
+        const chart = new google.visualization.LineChart(document.getElementById('chart_div'));
+        chart.draw(dataTable, options);
+      }
+    </script>
+  </body>
+</html>
