@@ -217,6 +217,7 @@
             .showDashboard();
         });
 
+        // Double-layer validation: frontend checks first, backend enforces again.
         window.submitData = function(e) {
           e.preventDefault();
           var date = document.getElementById('dateInput').value;
@@ -225,6 +226,10 @@
 
           if (!date || isNaN(rate) || isNaN(twd)) {
             alert('請正確填寫所有欄位');
+            return;
+          }
+          if (rate <= 0) {
+            alert('匯率必須大於 0');
             return;
           }
 
@@ -240,7 +245,7 @@
               document.getElementById('status').style.color = 'red';
               document.getElementById('status').textContent = '儲存失敗: ' + (err && err.message ? err.message : '');
             })
-            .appendData(date, rate, twd);
+            .addExchangeRecord(date, rate, twd);
         };
       })();
     </script>

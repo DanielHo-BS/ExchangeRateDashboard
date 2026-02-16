@@ -49,12 +49,39 @@
         font-weight: 700;
         color: #0f172a;
       }
-      #inflow_outflow {
+      .inflow-outflow-card {
         font-size: 0.85rem;
         color: #475569;
         line-height: 1.5;
         margin-bottom: 12px;
+        background: #fff;
+        border-radius: 10px;
+        padding: 14px 18px;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+        border: 1px solid #e2e8f0;
       }
+      .inflow-outflow-card .io-group {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: baseline;
+        gap: 0 1.25rem;
+        margin-bottom: 8px;
+      }
+      .inflow-outflow-card .io-group:last-child { margin-bottom: 0; }
+      .inflow-outflow-card .io-group-label {
+        font-size: 0.75rem;
+        font-weight: 600;
+        color: #64748b;
+        text-transform: uppercase;
+        letter-spacing: 0.03em;
+        min-width: 2.2em;
+      }
+      .inflow-outflow-card .io-item {
+        white-space: nowrap;
+      }
+      .inflow-outflow-card .io-inflow .io-val { color: #059669; font-weight: 500; }
+      .inflow-outflow-card .io-outflow .io-val { color: #dc2626; font-weight: 500; }
+      .inflow-outflow-card .io-net .io-val { color: #0f172a; }
       .context-row {
         font-size: 0.85rem;
         color: #64748b;
@@ -125,7 +152,7 @@
         <div class="kpi-value" id="kpi_count">—</div>
       </div>
     </div>
-    <div id="inflow_outflow"></div>
+    <div id="inflow_outflow" class="inflow-outflow-card"></div>
     <div class="context-row" id="context_row"></div>
     <div class="toolbar">
       <button id="btnRefresh" onclick="loadData()">重新整理</button>
@@ -147,64 +174,66 @@
     <script>
       google.charts.load('current', { packages: ['corechart'] });
 
+      // Single task-oriented call: backend returns all data; no parsing or business logic here.
       function loadData() {
         var statusEl = document.getElementById('dashboard_status');
         statusEl.textContent = '載入中…';
         statusEl.style.color = '';
 
         google.script.run
-          .withSuccessHandler(function(data) {
+          .withSuccessHandler(function(payload) {
             statusEl.textContent = '';
-            google.script.run
-              .withSuccessHandler(function(stats) {
-                drawChart(data, stats);
-              })
-              .getSummaryStats();
-            google.script.run.withSuccessHandler(updateInflowOutflow).getInflowOutflowSummary();
+            try {
+              if (!payload) payload = {};
+              drawCharts(payload);
+              if (payload.inflowOutflow) updateInflowOutflow(payload.inflowOutflow);
+            } catch (err) {
+              statusEl.style.color = 'red';
+              statusEl.textContent = '顯示錯誤: ' + (err && err.message ? err.message : String(err));
+            }
           })
           .withFailureHandler(function(err) {
             statusEl.style.color = 'red';
-            statusEl.textContent = '載入失敗: ' + err.message;
+            statusEl.textContent = '載入失敗: ' + (err && err.message ? err.message : String(err));
           })
-          .readExchangeData();
+          .getDashboardData();
       }
 
-      function drawChart(data, stats) {
-        stats = stats || {};
-        var rateRows = [['Date', '匯率', '平均匯率']];
-        var twdRows = [['Date', '交易金額 (TWD)']];
-        var rows = [];
+      // Presentation only: draw charts from backend-provided chartSeries. No parsing or computation.
+      function drawCharts(payload) {
+        var summary = payload.summary || {};
+        var transactions = payload.transactions || [];
+        var chartSeries = payload.chartSeries || { rate: [], twd: [], assets: [] };
 
-        data.forEach(function(line) {
-          var dateMatch = line.match(/Date:\s*([\w\s:-]+)/);
-          var rateMatch = line.match(/Rate:\s*([\d.]+)/);
-          var twdMatch = line.match(/TWD:\s*(-?[\d.]+)/);
-          var usdMatch = line.match(/USD:\s*(-?[\d.]+)/);
+        updateSummary(summary, summary.count);
+        updateContext(transactions);
 
-          if (dateMatch && rateMatch && twdMatch) {
-            var date = new Date(dateMatch[1]);
-            var rate = parseFloat(rateMatch[1]);
-            var twd = parseFloat(twdMatch[1]);
-            var usd = usdMatch ? parseFloat(usdMatch[1]) : twd / rate;
-            var avgRate = stats && Number(stats.averageRate) ? Number(stats.averageRate) : rate;
-            rateRows.push([date, rate, avgRate]);
-            twdRows.push([date, twd]);
-            rows.push({ date: date, rate: rate, twd: twd, usd: usd });
-          }
-        });
-
-        if (rows.length === 0) {
-          updateSummary(stats, 0);
-          updateContext([]);
+        if (transactions.length === 0) {
           document.getElementById('chart_rate_div').innerHTML = '<p style="color:#64748b; padding:16px;">尚無資料</p>';
           document.getElementById('chart_twd_div').innerHTML = '<p style="color:#64748b; padding:16px;">尚無資料</p>';
           document.getElementById('chart_assets_div').innerHTML = '<p style="color:#64748b; padding:16px;">尚無交易資料</p>';
           return;
         }
 
-        var dateMin = rows[0].date;
-        var dateMax = rows[rows.length - 1].date;
-        var viewWindow = { min: dateMin, max: dateMax };
+        // Convert date strings to Date for chart axis (presentation only)
+        function toChartRows(rows) {
+          if (!rows || rows.length < 2) return rows;
+          var out = [rows[0]];
+          for (var i = 1; i < rows.length; i++) {
+            var r = rows[i].slice();
+            r[0] = r[0] instanceof Date ? r[0] : new Date(r[0]);
+            out.push(r);
+          }
+          return out;
+        }
+
+        var rateRows = toChartRows(chartSeries.rate);
+        var twdRows = toChartRows(chartSeries.twd);
+        var assetsRows = toChartRows(chartSeries.assets);
+
+        var dateMin = rateRows.length > 1 ? rateRows[1][0] : null;
+        var dateMax = rateRows.length > 1 ? rateRows[rateRows.length - 1][0] : null;
+        var viewWindow = dateMin && dateMax ? { min: dateMin, max: dateMax } : {};
 
         var rateTable = google.visualization.arrayToDataTable(rateRows);
         var twdTable = google.visualization.arrayToDataTable(twdRows);
@@ -277,14 +306,6 @@
         rateChart.draw(rateTable, rateOptions);
         twdChart.draw(twdTable, twdOptions);
 
-        var cumTWD = 0, cumUSD = 0;
-        var assetsRows = [['Date', '總資產 (USD)', '總資產 (TWD)']];
-        rows.forEach(function(r) {
-          cumTWD += r.twd;
-          cumUSD += r.usd;
-          assetsRows.push([r.date, cumUSD, cumTWD]);
-        });
-
         var assetsDiv = document.getElementById('chart_assets_div');
         if (assetsRows.length > 1) {
           var assetsTable = google.visualization.arrayToDataTable(assetsRows);
@@ -323,35 +344,35 @@
         } else {
           assetsDiv.innerHTML = '<p style="color:#64748b; padding:16px; font-size:0.9rem;">尚無交易資料，無法顯示總資產長條圖。</p>';
         }
-
-        updateSummary(stats, rows.length);
-        updateContext(rows);
       }
 
-      function updateSummary(stats, count) {
+      function updateSummary(summary, count) {
         var twdEl = document.getElementById('kpi_twd');
         var usdEl = document.getElementById('kpi_usd');
         var rateEl = document.getElementById('kpi_rate');
         var countEl = document.getElementById('kpi_count');
-        if (twdEl) twdEl.textContent = stats && stats.totalTWD !== undefined ? Number(stats.totalTWD).toLocaleString() : '—';
-        if (usdEl) usdEl.textContent = stats && stats.totalUSD !== undefined ? Number(stats.totalUSD).toFixed(2) : '—';
-        if (rateEl) rateEl.textContent = stats && stats.averageRate !== undefined ? Number(stats.averageRate).toFixed(4) : '—';
+        if (twdEl) twdEl.textContent = summary && summary.totalTWD !== undefined ? Number(summary.totalTWD).toLocaleString() : '—';
+        if (usdEl) usdEl.textContent = summary && summary.totalUSD !== undefined ? Number(summary.totalUSD).toFixed(2) : '—';
+        if (rateEl) rateEl.textContent = summary && summary.averageRate !== undefined ? Number(summary.averageRate).toFixed(4) : '—';
         if (countEl) countEl.textContent = count !== undefined ? count : '—';
       }
 
-      function updateContext(rows) {
+      // Display only: format date range from backend transactions (dateIso).
+      function updateContext(transactions) {
         var el = document.getElementById('context_row');
         if (!el) return;
-        if (!rows || rows.length === 0) {
+        if (!transactions || transactions.length === 0) {
           el.textContent = '';
           return;
         }
-        var minD = rows[0].date;
-        var maxD = rows[rows.length - 1].date;
-        var fmt = function(d) {
-          return d.getFullYear() + '/' + (d.getMonth() + 1) + '/' + d.getDate();
+        var minIso = transactions[0].dateIso;
+        var maxIso = transactions[transactions.length - 1].dateIso;
+        var fmt = function(iso) {
+          if (!iso) return '';
+          var p = iso.split('-');
+          return p[0] + '/' + parseInt(p[1], 10) + '/' + parseInt(p[2], 10);
         };
-        el.textContent = '資料期間：' + fmt(minD) + ' － ' + fmt(maxD) + '　共 ' + rows.length + ' 筆交易';
+        el.textContent = '資料期間：' + fmt(minIso) + ' － ' + fmt(maxIso) + '　共 ' + transactions.length + ' 筆交易';
       }
 
       function updateInflowOutflow(io) {
@@ -359,8 +380,18 @@
         if (!div) return;
         var fmt = function(n) { return n.toLocaleString(); };
         div.innerHTML =
-          '匯入 <span style="color:#10b981;">' + fmt(io.inflowTWD) + '</span> TWD　匯出 <span style="color:#dc2626;">' + fmt(io.outflowTWD) + '</span> TWD　淨 <strong>' + fmt(io.netTWD) + '</strong> TWD　' +
-          '匯入 <span style="color:#10b981;">' + io.inflowUSD.toFixed(2) + '</span> USD　匯出 <span style="color:#dc2626;">' + io.outflowUSD.toFixed(2) + '</span> USD　淨 <strong>' + io.netUSD.toFixed(2) + '</strong> USD';
+          '<div class="io-group">' +
+            '<span class="io-group-label">TWD</span>' +
+            '<span class="io-item io-inflow">匯入 <span class="io-val">' + fmt(io.inflowTWD) + '</span></span>' +
+            '<span class="io-item io-outflow">匯出 <span class="io-val">' + fmt(io.outflowTWD) + '</span></span>' +
+            '<span class="io-item io-net">淨 <span class="io-val">' + fmt(io.netTWD) + '</span></span>' +
+          '</div>' +
+          '<div class="io-group">' +
+            '<span class="io-group-label">USD</span>' +
+            '<span class="io-item io-inflow">匯入 <span class="io-val">' + io.inflowUSD.toFixed(2) + '</span></span>' +
+            '<span class="io-item io-outflow">匯出 <span class="io-val">' + io.outflowUSD.toFixed(2) + '</span></span>' +
+            '<span class="io-item io-net">淨 <span class="io-val">' + io.netUSD.toFixed(2) + '</span></span>' +
+          '</div>';
       }
 
       // On load: wait for Charts then load data

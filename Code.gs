@@ -1,3 +1,32 @@
+/**
+ * =============================================================================
+ * API CONTRACT (exposed to frontend via google.script.run)
+ * =============================================================================
+ *
+ * getDashboardData()
+ *   Parameters: none
+ *   Returns: {
+ *     transactions: Array<{ dateIso, rate, twd, usd }>,
+ *     summary: { totalTWD, totalUSD, averageRate, count },
+ *     inflowOutflow: { inflowTWD, outflowTWD, netTWD, inflowUSD, outflowUSD, netUSD },
+ *     chartSeries: {
+ *       rate: Array<[dateIso, rate, averageRate]>,
+ *       twd: Array<[dateIso, twd]>,
+ *       assets: Array<[dateIso, cumUSD, cumTWD]>
+ *     }
+ *   }
+ *   All dates are ISO strings. Frontend uses them for display and charts only.
+ *
+ * addExchangeRecord(dateStr, rate, twd)
+ *   Parameters: dateStr (string yyyy-mm-dd), rate (number), twd (number)
+ *   Returns: none (throws on validation error)
+ *   Appends one row to the active sheet. Validation: valid date, rate > 0, twd is number.
+ *
+ * showSidebar() / showDashboard()
+ *   Parameters: none. Used to open UI.
+ * =============================================================================
+ */
+
 function onOpen() {
   SpreadsheetApp.getUi()
     .createMenu('匯率工具')
@@ -22,26 +51,101 @@ function showDashboard() {
   SpreadsheetApp.getUi().showModalDialog(html, '匯率儀表板');
 }
 
-function readExchangeData() {
+/**
+ * Task-oriented API: returns everything the dashboard needs in one call.
+ * Backend owns all business logic and computation (summary, inflow/outflow, chart series).
+ * Dates returned as ISO strings for frontend display/charts only.
+ */
+function getDashboardData() {
   const sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
-  const data = sheet.getDataRange().getValues();
+  let data = [];
+  try {
+    const range = sheet.getDataRange();
+    if (range) data = range.getValues() || [];
+  } catch (e) {
+    // Empty sheet or no data range
+  }
+  if (!data.length || data.length < 2) {
+    return {
+      transactions: [],
+      summary: { totalTWD: 0, totalUSD: 0, averageRate: 0, count: 0 },
+      inflowOutflow: { inflowTWD: 0, outflowTWD: 0, netTWD: 0, inflowUSD: 0, outflowUSD: 0, netUSD: 0 },
+      chartSeries: { rate: [], twd: [], assets: [] }
+    };
+  }
 
-  let output = [];
+  const transactions = [];
+  let totalTWD = 0, totalUSD = 0, sumRate = 0;
+  let inflowTWD = 0, outflowTWD = 0, inflowUSD = 0, outflowUSD = 0;
 
   for (let i = 1; i < data.length; i++) {
     const row = data[i];
-    const timestamp = row[0];
-    const rate = row[1];
-    const twd = row[2];
-    const usd = row[3];
-    output.push(`📅 Date: ${timestamp}, 💱 Rate: ${rate}, 🇹🇼 TWD: ${twd}, 🇺🇸 USD: ${usd}`);
+    const dateVal = row[0];
+    const rate = Number(row[1]);
+    const twd = Number(row[2]);
+    const usd = Number(row[3]);
+    if (isNaN(rate) || isNaN(twd) || isNaN(usd)) continue;
+
+    const date = dateVal instanceof Date ? dateVal : new Date(dateVal);
+    const dateIso = date.toISOString ? date.toISOString().slice(0, 10) : String(dateVal);
+
+    transactions.push({ dateIso, rate, twd, usd });
+    totalTWD += twd;
+    totalUSD += usd;
+    sumRate += rate;
+    if (twd >= 0) {
+      inflowTWD += twd;
+      inflowUSD += usd;
+    } else {
+      outflowTWD += twd;
+      outflowUSD += usd;
+    }
   }
 
-  // 回傳結果給前端
-  return output;
+  const count = transactions.length;
+  const averageRate = count > 0 ? sumRate / count : 0;
+  const summary = { totalTWD, totalUSD, averageRate, count };
+  const inflowOutflow = {
+    inflowTWD,
+    outflowTWD,
+    netTWD: inflowTWD + outflowTWD,
+    inflowUSD,
+    outflowUSD,
+    netUSD: inflowUSD + outflowUSD
+  };
+
+  // Build chart series (backend owns heavy computation)
+  const rateSeries = [['Date', '匯率', '平均匯率']];
+  const twdSeries = [['Date', '交易金額 (TWD)']];
+  const assetsSeries = [['Date', '總資產 (USD)', '總資產 (TWD)']];
+  let cumTWD = 0, cumUSD = 0;
+
+  // Use ISO date strings only (no Date objects) so serialization to client is reliable.
+  for (let j = 0; j < transactions.length; j++) {
+    const t = transactions[j];
+    rateSeries.push([t.dateIso, t.rate, averageRate]);
+    twdSeries.push([t.dateIso, t.twd]);
+    cumTWD += t.twd;
+    cumUSD += t.usd;
+    assetsSeries.push([t.dateIso, cumUSD, cumTWD]);
+  }
+
+  return {
+    transactions,
+    summary,
+    inflowOutflow,
+    chartSeries: {
+      rate: rateSeries,
+      twd: twdSeries,
+      assets: assetsSeries
+    }
+  };
 }
 
-function appendData(dateStr, rate, twd) {
+/**
+ * Task-oriented API: add one exchange record. Validates and computes USD on backend.
+ */
+function addExchangeRecord(dateStr, rate, twd) {
   const sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
 
   // 驗證日期格式並轉換
@@ -64,59 +168,7 @@ function appendData(dateStr, rate, twd) {
   // 計算 USD
   const usd = twd / rate;
 
-  // 新增資料列
   sheet.appendRow([date, rate, twd, usd]);
-
-}
-
-function getSummaryStats() {
-  const sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
-  const data = sheet.getRange(2, 5, 1, 3).getValues()[0];  // 第 2 列，第 5~7 欄
-
-  const totalTWD = data[0];
-  const totalUSD = data[1];
-  const averageRate = data[2];
-
-  return {
-    totalTWD,
-    totalUSD,
-    averageRate
-  };
-}
-
-/**
- * Returns inflow/outflow breakdown for 匯入 (buy USD) and 匯出 (sell USD).
- * Positive TWD = 匯入, negative TWD = 匯出.
- */
-function getInflowOutflowSummary() {
-  const sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
-  const data = sheet.getDataRange().getValues();
-  if (data.length < 2) {
-    return { inflowTWD: 0, outflowTWD: 0, netTWD: 0, inflowUSD: 0, outflowUSD: 0, netUSD: 0 };
-  }
-
-  let inflowTWD = 0, outflowTWD = 0, inflowUSD = 0, outflowUSD = 0;
-  for (let i = 1; i < data.length; i++) {
-    const twd = Number(data[i][2]);
-    const usd = Number(data[i][3]);
-    if (isNaN(twd) || isNaN(usd)) continue;
-    if (twd >= 0) {
-      inflowTWD += twd;
-      inflowUSD += usd;
-    } else {
-      outflowTWD += twd;  // keep negative
-      outflowUSD += usd;
-    }
-  }
-
-  return {
-    inflowTWD,
-    outflowTWD,
-    netTWD: inflowTWD + outflowTWD,
-    inflowUSD,
-    outflowUSD,
-    netUSD: inflowUSD + outflowUSD
-  };
 }
 
 function onFormSubmit(e) {
