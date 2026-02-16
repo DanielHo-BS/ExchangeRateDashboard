@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <base target="_top">
+    <script type="text/javascript" src="https://www.gstatic.com/charts/loader.js"></script>
+    <style>
+      body {
+        font-family: 'Segoe UI', 'Microsoft JhengHei', sans-serif;
+        margin: 0;
+        padding: 24px;
+        background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
+        color: #1e293b;
+      }
+      h2 {
+        margin: 0 0 4px 0;
+        font-size: 1.5rem;
+        font-weight: 600;
+        color: #0f172a;
+      }
+      .subtitle {
+        font-size: 0.9rem;
+        color: #64748b;
+        margin-bottom: 20px;
+      }
+      .kpi-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 20px;
+        background: #fff;
+        border-radius: 10px;
+        padding: 20px;
+        margin-bottom: 12px;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+        border: 1px solid #e2e8f0;
+      }
+      .kpi-block {
+        flex: 1;
+        min-width: 100px;
+      }
+      .kpi-label {
+        font-size: 0.75rem;
+        color: #64748b;
+        text-transform: uppercase;
+        letter-spacing: 0.02em;
+        margin-bottom: 4px;
+      }
+      .kpi-value {
+        font-size: 1.5rem;
+        font-weight: 700;
+        color: #0f172a;
+      }
+      #inflow_outflow {
+        font-size: 0.85rem;
+        color: #475569;
+        line-height: 1.5;
+        margin-bottom: 12px;
+      }
+      .context-row {
+        font-size: 0.85rem;
+        color: #64748b;
+        margin-bottom: 12px;
+      }
+      .toolbar {
+        margin-bottom: 16px;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+      #btnRefresh {
+        padding: 8px 18px;
+        font-size: 0.9rem;
+        font-weight: 500;
+        color: #fff;
+        background: linear-gradient(180deg, #3b82f6 0%, #2563eb 100%);
+        border: none;
+        border-radius: 8px;
+        cursor: pointer;
+        box-shadow: 0 1px 2px rgba(37, 99, 235, 0.3);
+      }
+      #btnRefresh:hover { background: linear-gradient(180deg, #2563eb 0%, #1d4ed8 100%); }
+      #dashboard_status { font-size: 0.9rem; color: #64748b; }
+      .chart-card {
+        background: #fff;
+        border-radius: 10px;
+        padding: 20px;
+        margin-top: 20px;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+        border: 1px solid #e2e8f0;
+      }
+      .chart-container { width: 100%; height: 300px; }
+      #chart_assets_div { height: 320px; }
+      .note {
+        font-size: 0.8rem;
+        color: #64748b;
+        margin-top: 16px;
+        padding-left: 4px;
+      }
+      .action-hint {
+        font-size: 0.8rem;
+        color: #64748b;
+        margin-left: 8px;
+      }
+      .action-hint a { color: #2563eb; cursor: pointer; }
+    </style>
+  </head>
+  <body>
+    <h2>匯率儀表板</h2>
+    <p class="subtitle">追蹤 TWD/USD 換匯與累計資產</p>
+
+    <div class="kpi-row">
+      <div class="kpi-block">
+        <div class="kpi-label">淨 TWD</div>
+        <div class="kpi-value" id="kpi_twd">—</div>
+      </div>
+      <div class="kpi-block">
+        <div class="kpi-label">淨 USD</div>
+        <div class="kpi-value" id="kpi_usd">—</div>
+      </div>
+      <div class="kpi-block">
+        <div class="kpi-label">平均匯率</div>
+        <div class="kpi-value" id="kpi_rate">—</div>
+      </div>
+      <div class="kpi-block">
+        <div class="kpi-label">交易筆數</div>
+        <div class="kpi-value" id="kpi_count">—</div>
+      </div>
+    </div>
+    <div id="inflow_outflow"></div>
+    <div class="context-row" id="context_row"></div>
+    <div class="toolbar">
+      <button id="btnRefresh" onclick="loadData()">重新整理</button>
+      <span id="dashboard_status"></span>
+      <span class="action-hint">新增一筆請從選單「匯率工具」→「開啟側邊欄」</span>
+    </div>
+
+    <div class="chart-card">
+      <div id="chart_rate_div" class="chart-container"></div>
+    </div>
+    <div class="chart-card">
+      <div id="chart_twd_div" class="chart-container"></div>
+    </div>
+    <div class="chart-card">
+      <div id="chart_assets_div"></div>
+    </div>
+    <p class="note">正＝匯入、負＝匯出</p>
+
+    <script>
+      google.charts.load('current', { packages: ['corechart'] });
+
+      function loadData() {
+        var statusEl = document.getElementById('dashboard_status');
+        statusEl.textContent = '載入中…';
+        statusEl.style.color = '';
+
+        google.script.run
+          .withSuccessHandler(function(data) {
+            statusEl.textContent = '';
+            google.script.run
+              .withSuccessHandler(function(stats) {
+                drawChart(data, stats);
+              })
+              .getSummaryStats();
+            google.script.run.withSuccessHandler(updateInflowOutflow).getInflowOutflowSummary();
+          })
+          .withFailureHandler(function(err) {
+            statusEl.style.color = 'red';
+            statusEl.textContent = '載入失敗: ' + err.message;
+          })
+          .readExchangeData();
+      }
+
+      function drawChart(data, stats) {
+        stats = stats || {};
+        var rateRows = [['Date', '匯率', '平均匯率']];
+        var twdRows = [['Date', '交易金額 (TWD)']];
+        var rows = [];
+
+        data.forEach(function(line) {
+          var dateMatch = line.match(/Date:\s*([\w\s:-]+)/);
+          var rateMatch = line.match(/Rate:\s*([\d.]+)/);
+          var twdMatch = line.match(/TWD:\s*(-?[\d.]+)/);
+          var usdMatch = line.match(/USD:\s*(-?[\d.]+)/);
+
+          if (dateMatch && rateMatch && twdMatch) {
+            var date = new Date(dateMatch[1]);
+            var rate = parseFloat(rateMatch[1]);
+            var twd = parseFloat(twdMatch[1]);
+            var usd = usdMatch ? parseFloat(usdMatch[1]) : twd / rate;
+            var avgRate = stats && Number(stats.averageRate) ? Number(stats.averageRate) : rate;
+            rateRows.push([date, rate, avgRate]);
+            twdRows.push([date, twd]);
+            rows.push({ date: date, rate: rate, twd: twd, usd: usd });
+          }
+        });
+
+        if (rows.length === 0) {
+          updateSummary(stats, 0);
+          updateContext([]);
+          document.getElementById('chart_rate_div').innerHTML = '<p style="color:#64748b; padding:16px;">尚無資料</p>';
+          document.getElementById('chart_twd_div').innerHTML = '<p style="color:#64748b; padding:16px;">尚無資料</p>';
+          document.getElementById('chart_assets_div').innerHTML = '<p style="color:#64748b; padding:16px;">尚無交易資料</p>';
+          return;
+        }
+
+        var dateMin = rows[0].date;
+        var dateMax = rows[rows.length - 1].date;
+        var viewWindow = { min: dateMin, max: dateMax };
+
+        var rateTable = google.visualization.arrayToDataTable(rateRows);
+        var twdTable = google.visualization.arrayToDataTable(twdRows);
+
+        var chartArea = { left: 56, top: 48, width: '78%', height: '72%' };
+        var titleStyle = { fontSize: 15, bold: true, color: '#334155' };
+        var axisTextStyle = { fontSize: 11, color: '#64748b' };
+        var gridColor = '#e2e8f0';
+
+        var hAxisOptions = {
+          format: 'yyyy/M/d',
+          slantedText: true,
+          slantedTextAngle: 45,
+          maxTextLines: 1,
+          textStyle: axisTextStyle,
+          viewWindow: viewWindow
+        };
+
+        var rateOptions = {
+          title: '匯率趨勢',
+          titleTextStyle: titleStyle,
+          legend: { position: 'top', textStyle: axisTextStyle },
+          chartArea: chartArea,
+          backgroundColor: 'transparent',
+          hAxis: hAxisOptions,
+          vAxis: {
+            title: '匯率',
+            format: '#,##0.00',
+            gridlines: { count: 6, color: gridColor },
+            textStyle: axisTextStyle,
+            titleTextStyle: axisTextStyle
+          },
+          curveType: 'function',
+          lineWidth: 3,
+          pointSize: 6,
+          pointShape: 'circle',
+          series: {
+            0: { color: '#2563eb' },
+            1: { color: '#94a3b8', lineDash: [4, 4], lineWidth: 2, pointSize: 0 }
+          }
+        };
+
+        var twdValues = twdRows.slice(1).map(function(r) { return r[1]; });
+        var hasNegative = twdValues.some(function(v) { return v < 0; });
+        var hasPositive = twdValues.some(function(v) { return v > 0; });
+        var twdOptions = {
+          title: '交易金額趨勢',
+          titleTextStyle: titleStyle,
+          legend: { position: 'none' },
+          chartArea: chartArea,
+          backgroundColor: 'transparent',
+          hAxis: hAxisOptions,
+          vAxis: {
+            title: 'TWD',
+            format: '#,##0',
+            gridlines: { count: 6, color: gridColor },
+            textStyle: axisTextStyle,
+            titleTextStyle: axisTextStyle,
+            viewWindow: (hasNegative && hasPositive) ? { min: null, max: null } : undefined
+          },
+          curveType: 'function',
+          lineWidth: 3,
+          pointSize: 6,
+          pointShape: 'circle',
+          colors: ['#10b981']
+        };
+
+        var rateChart = new google.visualization.LineChart(document.getElementById('chart_rate_div'));
+        var twdChart = new google.visualization.LineChart(document.getElementById('chart_twd_div'));
+        rateChart.draw(rateTable, rateOptions);
+        twdChart.draw(twdTable, twdOptions);
+
+        var cumTWD = 0, cumUSD = 0;
+        var assetsRows = [['Date', '總資產 (USD)', '總資產 (TWD)']];
+        rows.forEach(function(r) {
+          cumTWD += r.twd;
+          cumUSD += r.usd;
+          assetsRows.push([r.date, cumUSD, cumTWD]);
+        });
+
+        var assetsDiv = document.getElementById('chart_assets_div');
+        if (assetsRows.length > 1) {
+          var assetsTable = google.visualization.arrayToDataTable(assetsRows);
+          var assetsOptions = {
+            title: '總資產',
+            titleTextStyle: titleStyle,
+            legend: { position: 'top', textStyle: axisTextStyle },
+            chartArea: { left: 56, top: 56, width: '78%', height: '68%' },
+            backgroundColor: 'transparent',
+            hAxis: hAxisOptions,
+            vAxes: {
+              0: {
+                title: 'TWD',
+                format: '#,##0',
+                gridlines: { count: 6, color: gridColor },
+                textStyle: axisTextStyle,
+                titleTextStyle: axisTextStyle
+              },
+              1: {
+                title: 'USD',
+                format: '#,##0',
+                gridlines: { count: 6, color: gridColor },
+                textStyle: axisTextStyle,
+                titleTextStyle: axisTextStyle
+              }
+            },
+            series: {
+              0: { targetAxisIndex: 1 },
+              1: { targetAxisIndex: 0 }
+            },
+            bar: { groupWidth: '72%' },
+            colors: ['#0ea5e9', '#10b981']
+          };
+          var assetsChart = new google.visualization.ColumnChart(assetsDiv);
+          assetsChart.draw(assetsTable, assetsOptions);
+        } else {
+          assetsDiv.innerHTML = '<p style="color:#64748b; padding:16px; font-size:0.9rem;">尚無交易資料，無法顯示總資產長條圖。</p>';
+        }
+
+        updateSummary(stats, rows.length);
+        updateContext(rows);
+      }
+
+      function updateSummary(stats, count) {
+        var twdEl = document.getElementById('kpi_twd');
+        var usdEl = document.getElementById('kpi_usd');
+        var rateEl = document.getElementById('kpi_rate');
+        var countEl = document.getElementById('kpi_count');
+        if (twdEl) twdEl.textContent = stats && stats.totalTWD !== undefined ? Number(stats.totalTWD).toLocaleString() : '—';
+        if (usdEl) usdEl.textContent = stats && stats.totalUSD !== undefined ? Number(stats.totalUSD).toFixed(2) : '—';
+        if (rateEl) rateEl.textContent = stats && stats.averageRate !== undefined ? Number(stats.averageRate).toFixed(4) : '—';
+        if (countEl) countEl.textContent = count !== undefined ? count : '—';
+      }
+
+      function updateContext(rows) {
+        var el = document.getElementById('context_row');
+        if (!el) return;
+        if (!rows || rows.length === 0) {
+          el.textContent = '';
+          return;
+        }
+        var minD = rows[0].date;
+        var maxD = rows[rows.length - 1].date;
+        var fmt = function(d) {
+          return d.getFullYear() + '/' + (d.getMonth() + 1) + '/' + d.getDate();
+        };
+        el.textContent = '資料期間：' + fmt(minD) + ' － ' + fmt(maxD) + '　共 ' + rows.length + ' 筆交易';
+      }
+
+      function updateInflowOutflow(io) {
+        var div = document.getElementById('inflow_outflow');
+        if (!div) return;
+        var fmt = function(n) { return n.toLocaleString(); };
+        div.innerHTML =
+          '匯入 <span style="color:#10b981;">' + fmt(io.inflowTWD) + '</span> TWD　匯出 <span style="color:#dc2626;">' + fmt(io.outflowTWD) + '</span> TWD　淨 <strong>' + fmt(io.netTWD) + '</strong> TWD　' +
+          '匯入 <span style="color:#10b981;">' + io.inflowUSD.toFixed(2) + '</span> USD　匯出 <span style="color:#dc2626;">' + io.outflowUSD.toFixed(2) + '</span> USD　淨 <strong>' + io.netUSD.toFixed(2) + '</strong> USD';
+      }
+
+      // On load: wait for Charts then load data
+      google.charts.setOnLoadCallback(function() {
+        loadData();
+      });
+    </script>
+  </body>
+</html>

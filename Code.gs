@@ -2,6 +2,7 @@ function onOpen() {
   SpreadsheetApp.getUi()
     .createMenu('匯率工具')
     .addItem('開啟側邊欄', 'showSidebar')
+    .addItem('開啟儀表板', 'showDashboard')
     .addToUi();
 }
 
@@ -9,6 +10,16 @@ function showSidebar() {
   const html = HtmlService.createHtmlOutputFromFile('Sidebar')
     .setTitle('匯率資料讀取');
   SpreadsheetApp.getUi().showSidebar(html);
+}
+
+/**
+ * Opens the Dashboard (summary + charts) in a modal dialog for better readability.
+ */
+function showDashboard() {
+  const html = HtmlService.createHtmlOutputFromFile('Dashboard')
+    .setWidth(880)
+    .setHeight(720);
+  SpreadsheetApp.getUi().showModalDialog(html, '匯率儀表板');
 }
 
 function readExchangeData() {
@@ -31,7 +42,7 @@ function readExchangeData() {
 }
 
 function appendData(dateStr, rate, twd) {
-  const sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheetTotal USD();
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
 
   // 驗證日期格式並轉換
   const date = new Date(dateStr);
@@ -70,6 +81,41 @@ function getSummaryStats() {
     totalTWD,
     totalUSD,
     averageRate
+  };
+}
+
+/**
+ * Returns inflow/outflow breakdown for 匯入 (buy USD) and 匯出 (sell USD).
+ * Positive TWD = 匯入, negative TWD = 匯出.
+ */
+function getInflowOutflowSummary() {
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
+  const data = sheet.getDataRange().getValues();
+  if (data.length < 2) {
+    return { inflowTWD: 0, outflowTWD: 0, netTWD: 0, inflowUSD: 0, outflowUSD: 0, netUSD: 0 };
+  }
+
+  let inflowTWD = 0, outflowTWD = 0, inflowUSD = 0, outflowUSD = 0;
+  for (let i = 1; i < data.length; i++) {
+    const twd = Number(data[i][2]);
+    const usd = Number(data[i][3]);
+    if (isNaN(twd) || isNaN(usd)) continue;
+    if (twd >= 0) {
+      inflowTWD += twd;
+      inflowUSD += usd;
+    } else {
+      outflowTWD += twd;  // keep negative
+      outflowUSD += usd;
+    }
+  }
+
+  return {
+    inflowTWD,
+    outflowTWD,
+    netTWD: inflowTWD + outflowTWD,
+    inflowUSD,
+    outflowUSD,
+    netUSD: inflowUSD + outflowUSD
   };
 }
 
