@@ -91,8 +91,36 @@
         margin-bottom: 16px;
         display: flex;
         align-items: center;
+        flex-wrap: wrap;
         gap: 12px;
       }
+      .time-filter-wrap {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .time-filter-wrap label { font-size: 0.9rem; color: #64748b; }
+      #timeFilter {
+        padding: 6px 10px;
+        font-size: 0.9rem;
+        border: 1px solid #e2e8f0;
+        border-radius: 6px;
+        background: #fff;
+        color: #1e293b;
+      }
+      .time-filter-custom { display: none; align-items: center; gap: 6px; }
+      .time-filter-custom.visible { display: flex; }
+      .time-filter-custom input[type="date"] { padding: 4px 8px; font-size: 0.85rem; border: 1px solid #e2e8f0; border-radius: 4px; }
+      #btnApplyRange {
+        padding: 4px 12px;
+        font-size: 0.85rem;
+        background: #e2e8f0;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        color: #475569;
+      }
+      #btnApplyRange:hover { background: #cbd5e1; }
       #btnRefresh {
         padding: 8px 18px;
         font-size: 0.9rem;
@@ -155,6 +183,22 @@
     <div id="inflow_outflow" class="inflow-outflow-card"></div>
     <div class="context-row" id="context_row"></div>
     <div class="toolbar">
+      <div class="time-filter-wrap">
+        <label for="timeFilter">時間範圍</label>
+        <select id="timeFilter" onchange="onTimeFilterChange()">
+          <option value="all">全部</option>
+          <option value="3m">最近 3 個月</option>
+          <option value="6m">最近 6 個月</option>
+          <option value="1y">最近 1 年</option>
+          <option value="custom">自訂</option>
+        </select>
+        <span class="time-filter-custom" id="timeFilterCustom">
+          <input type="date" id="dateFrom" title="開始日期">
+          <span>－</span>
+          <input type="date" id="dateTo" title="結束日期">
+          <button type="button" id="btnApplyRange" onclick="loadData()">套用</button>
+        </span>
+      </div>
       <button id="btnRefresh" onclick="loadData()">重新整理</button>
       <span id="dashboard_status"></span>
       <span class="action-hint">新增一筆請從選單「匯率工具」→「開啟側邊欄」</span>
@@ -168,6 +212,7 @@
     </div>
     <div class="chart-card">
       <div id="chart_assets_div"></div>
+      <p class="note" style="margin-top:8px;">總資產以季為單位顯示</p>
     </div>
     <p class="note">正＝匯入、負＝匯出</p>
 
@@ -175,28 +220,66 @@
       google.charts.load('current', { packages: ['corechart'] });
 
       // Single task-oriented call: backend returns all data; no parsing or business logic here.
+      // Time filter: pass optional dateFrom, dateTo (ISO) to getDashboardData; backend filters and returns payload.
+      function getFilterDates() {
+        var sel = document.getElementById('timeFilter');
+        var value = sel ? sel.value : 'all';
+        if (value === 'all') return { dateFrom: null, dateTo: null };
+        if (value === 'custom') {
+          var fromEl = document.getElementById('dateFrom');
+          var toEl = document.getElementById('dateTo');
+          var dateFrom = fromEl && fromEl.value ? fromEl.value : null;
+          var dateTo = toEl && toEl.value ? toEl.value : null;
+          return { dateFrom: dateFrom || null, dateTo: dateTo || null };
+        }
+        var end = new Date();
+        end.setHours(0, 0, 0, 0);
+        var start = new Date(end);
+        if (value === '3m') start.setMonth(start.getMonth() - 3);
+        else if (value === '6m') start.setMonth(start.getMonth() - 6);
+        else if (value === '1y') start.setFullYear(start.getFullYear() - 1);
+        var dateFrom = start.getFullYear() + '-' + String(start.getMonth() + 1).padStart(2, '0') + '-' + String(start.getDate()).padStart(2, '0');
+        var dateTo = end.getFullYear() + '-' + String(end.getMonth() + 1).padStart(2, '0') + '-' + String(end.getDate()).padStart(2, '0');
+        return { dateFrom: dateFrom, dateTo: dateTo };
+      }
+
+      function onTimeFilterChange() {
+        var sel = document.getElementById('timeFilter');
+        var customWrap = document.getElementById('timeFilterCustom');
+        if (customWrap && sel && sel.value === 'custom') {
+          customWrap.classList.add('visible');
+        } else if (customWrap) {
+          customWrap.classList.remove('visible');
+          if (sel && sel.value !== 'custom') loadData();
+        }
+      }
+
       function loadData() {
         var statusEl = document.getElementById('dashboard_status');
         statusEl.textContent = '載入中…';
         statusEl.style.color = '';
 
-        google.script.run
-          .withSuccessHandler(function(payload) {
-            statusEl.textContent = '';
-            try {
-              if (!payload) payload = {};
-              drawCharts(payload);
-              if (payload.inflowOutflow) updateInflowOutflow(payload.inflowOutflow);
-            } catch (err) {
-              statusEl.style.color = 'red';
-              statusEl.textContent = '顯示錯誤: ' + (err && err.message ? err.message : String(err));
-            }
-          })
-          .withFailureHandler(function(err) {
+        var range = getFilterDates();
+        var run = google.script.run.withSuccessHandler(function(payload) {
+          statusEl.textContent = '';
+          try {
+            if (!payload) payload = {};
+            drawCharts(payload);
+            if (payload.inflowOutflow) updateInflowOutflow(payload.inflowOutflow);
+          } catch (err) {
             statusEl.style.color = 'red';
-            statusEl.textContent = '載入失敗: ' + (err && err.message ? err.message : String(err));
-          })
-          .getDashboardData();
+            statusEl.textContent = '顯示錯誤: ' + (err && err.message ? err.message : String(err));
+          }
+        }).withFailureHandler(function(err) {
+          statusEl.style.color = 'red';
+          statusEl.textContent = '載入失敗: ' + (err && err.message ? err.message : String(err));
+        });
+
+        if (range.dateFrom != null || range.dateTo != null) {
+          run.getDashboardData(range.dateFrom, range.dateTo);
+        } else {
+          run.getDashboardData();
+        }
       }
 
       // Presentation only: draw charts from backend-provided chartSeries. No parsing or computation.
@@ -235,8 +318,23 @@
         var dateMax = rateRows.length > 1 ? rateRows[rateRows.length - 1][0] : null;
         var viewWindow = dateMin && dateMax ? { min: dateMin, max: dateMax } : {};
 
-        var rateTable = google.visualization.arrayToDataTable(rateRows);
-        var twdTable = google.visualization.arrayToDataTable(twdRows);
+        // Build DataTables with explicit date/number types so axis #0 is not inferred as string.
+        var rateTable = new google.visualization.DataTable();
+        rateTable.addColumn('date', 'Date');
+        rateTable.addColumn('number', '匯率');
+        rateTable.addColumn('number', '平均匯率');
+        for (var ri = 1; ri < rateRows.length; ri++) {
+          var rr = rateRows[ri];
+          rateTable.addRow([rr[0] instanceof Date ? rr[0] : new Date(rr[0]), Number(rr[1]), Number(rr[2])]);
+        }
+
+        var twdTable = new google.visualization.DataTable();
+        twdTable.addColumn('date', 'Date');
+        twdTable.addColumn('number', '交易金額 (TWD)');
+        for (var ti = 1; ti < twdRows.length; ti++) {
+          var tr = twdRows[ti];
+          twdTable.addRow([tr[0] instanceof Date ? tr[0] : new Date(tr[0]), Number(tr[1])]);
+        }
 
         var chartArea = { left: 56, top: 48, width: '78%', height: '72%' };
         var titleStyle = { fontSize: 15, bold: true, color: '#334155' };
@@ -308,7 +406,20 @@
 
         var assetsDiv = document.getElementById('chart_assets_div');
         if (assetsRows.length > 1) {
-          var assetsTable = google.visualization.arrayToDataTable(assetsRows);
+          // Build DataTable with explicit types so axis #0 is not inferred as string (fixes ColumnChart error).
+          var assetsTable = new google.visualization.DataTable();
+          assetsTable.addColumn('date', 'Date');
+          assetsTable.addColumn('number', '總資產 (USD)');
+          assetsTable.addColumn('number', '總資產 (TWD)');
+          for (var i = 1; i < assetsRows.length; i++) {
+            var row = assetsRows[i];
+            var dateVal = row[0] instanceof Date ? row[0] : new Date(row[0]);
+            var usdVal = Number(row[1]);
+            var twdVal = Number(row[2]);
+            if (isNaN(usdVal)) usdVal = 0;
+            if (isNaN(twdVal)) twdVal = 0;
+            assetsTable.addRow([dateVal, usdVal, twdVal]);
+          }
           var assetsOptions = {
             title: '總資產',
             titleTextStyle: titleStyle,

@@ -3,8 +3,8 @@
  * API CONTRACT (exposed to frontend via google.script.run)
  * =============================================================================
  *
- * getDashboardData()
- *   Parameters: none
+ * getDashboardData(dateFrom, dateTo)
+ *   Parameters: optional dateFrom, dateTo (ISO date string 'YYYY-MM-DD' or null/undefined for no limit).
  *   Returns: {
  *     transactions: Array<{ dateIso, rate, twd, usd }>,
  *     summary: { totalTWD, totalUSD, averageRate, count },
@@ -52,11 +52,95 @@ function showDashboard() {
 }
 
 /**
+ * Returns quarter key from ISO date string (e.g. "2025-01-07" -> "2025-Q1").
+ * Quarter: Jan-Mar=Q1, Apr-Jun=Q2, Jul-Sep=Q3, Oct-Dec=Q4.
+ */
+function getQuarterKey(dateIso) {
+  const parts = dateIso.split('-');
+  const year = parseInt(parts[0], 10);
+  const month = parseInt(parts[1], 10);
+  const q = Math.ceil(month / 3);
+  return year + '-Q' + q;
+}
+
+/**
+ * Returns the last day of the quarter as ISO date string (e.g. "2025-Q1" -> "2025-03-31").
+ */
+function getQuarterEndDateIso(quarterKey) {
+  const [y, qPart] = quarterKey.split('-');
+  const year = parseInt(y, 10);
+  const q = parseInt(qPart.slice(1), 10);
+  const month = q * 3; // 3, 6, 9, 12
+  const lastDay = new Date(year, month, 0); // day 0 of next month = last day of month
+  const y2 = lastDay.getFullYear();
+  const m2 = String(lastDay.getMonth() + 1).padStart(2, '0');
+  const d2 = String(lastDay.getDate()).padStart(2, '0');
+  return y2 + '-' + m2 + '-' + d2;
+}
+
+/**
+ * Returns an array of quarter keys from first to last inclusive (e.g. ["2025-Q1","2025-Q2",...,"2026-Q1"]).
+ */
+function listQuartersFromTo(firstKey, lastKey) {
+  const list = [];
+  const [y1, q1] = firstKey.split('-').map((s, i) => i === 0 ? parseInt(s, 10) : parseInt(s.slice(1), 10));
+  const [y2, q2] = lastKey.split('-').map((s, i) => i === 0 ? parseInt(s, 10) : parseInt(s.slice(1), 10));
+  let y = y1, q = q1;
+  while (y < y2 || (y === y2 && q <= q2)) {
+    list.push(y + '-Q' + q);
+    if (q === 4) { q = 1; y += 1; } else { q += 1; }
+  }
+  return list;
+}
+
+/**
+ * Builds assets chart series aggregated by quarter.
+ * One row per quarter from first to last transaction quarter; empty quarters use carry-forward.
+ * Each row: [dateIso, cumUSD, cumTWD] (dateIso = quarter end date YYYY-MM-DD, e.g. 3/31, 6/30, 9/30, 12/31).
+ */
+function buildAssetsSeriesByQuarter(transactions) {
+  const header = [['Date', '總資產 (USD)', '總資產 (TWD)']];
+  if (!transactions || transactions.length === 0) return header;
+
+  let cumTWD = 0, cumUSD = 0;
+  const byQuarter = {}; // quarterKey -> { dateIso, cumUSD, cumTWD }
+
+  for (let j = 0; j < transactions.length; j++) {
+    const t = transactions[j];
+    cumTWD += t.twd;
+    cumUSD += t.usd;
+    const quarterKey = getQuarterKey(t.dateIso);
+    byQuarter[quarterKey] = { dateIso: t.dateIso, cumUSD: cumUSD, cumTWD: cumTWD };
+  }
+
+  const quarterKeys = Object.keys(byQuarter).sort();
+  const firstKey = quarterKeys[0];
+  const lastKey = quarterKeys[quarterKeys.length - 1];
+  const allQuarters = listQuartersFromTo(firstKey, lastKey);
+
+  let lastCum = { cumUSD: 0, cumTWD: 0 };
+  for (let i = 0; i < allQuarters.length; i++) {
+    const qk = allQuarters[i];
+    const entry = byQuarter[qk];
+    if (entry) {
+      lastCum = { cumUSD: entry.cumUSD, cumTWD: entry.cumTWD };
+      header.push([getQuarterEndDateIso(qk), Number(entry.cumUSD) || 0, Number(entry.cumTWD) || 0]);
+    } else {
+      // Empty quarter: carry forward; use quarter end date for axis
+      const dateIso = getQuarterEndDateIso(qk);
+      header.push([dateIso, Number(lastCum.cumUSD) || 0, Number(lastCum.cumTWD) || 0]);
+    }
+  }
+
+  return header;
+}
+
+/**
  * Task-oriented API: returns everything the dashboard needs in one call.
  * Backend owns all business logic and computation (summary, inflow/outflow, chart series).
  * Dates returned as ISO strings for frontend display/charts only.
  */
-function getDashboardData() {
+function getDashboardData(dateFrom, dateTo) {
   const sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
   let data = [];
   try {
@@ -74,7 +158,7 @@ function getDashboardData() {
     };
   }
 
-  const transactions = [];
+  let transactions = [];
   let totalTWD = 0, totalUSD = 0, sumRate = 0;
   let inflowTWD = 0, outflowTWD = 0, inflowUSD = 0, outflowUSD = 0;
 
@@ -88,6 +172,10 @@ function getDashboardData() {
 
     const date = dateVal instanceof Date ? dateVal : new Date(dateVal);
     const dateIso = date.toISOString ? date.toISOString().slice(0, 10) : String(dateVal);
+
+    // Optional time filter: keep only rows within [dateFrom, dateTo]
+    if (dateFrom != null && dateFrom !== '' && dateIso < dateFrom) continue;
+    if (dateTo != null && dateTo !== '' && dateIso > dateTo) continue;
 
     transactions.push({ dateIso, rate, twd, usd });
     totalTWD += twd;
@@ -117,18 +205,13 @@ function getDashboardData() {
   // Build chart series (backend owns heavy computation)
   const rateSeries = [['Date', '匯率', '平均匯率']];
   const twdSeries = [['Date', '交易金額 (TWD)']];
-  const assetsSeries = [['Date', '總資產 (USD)', '總資產 (TWD)']];
-  let cumTWD = 0, cumUSD = 0;
-
-  // Use ISO date strings only (no Date objects) so serialization to client is reliable.
   for (let j = 0; j < transactions.length; j++) {
     const t = transactions[j];
     rateSeries.push([t.dateIso, t.rate, averageRate]);
     twdSeries.push([t.dateIso, t.twd]);
-    cumTWD += t.twd;
-    cumUSD += t.usd;
-    assetsSeries.push([t.dateIso, cumUSD, cumTWD]);
   }
+  // Assets: one row per quarter (last transaction in quarter); empty quarters get carry-forward.
+  const assetsSeries = buildAssetsSeriesByQuarter(transactions);
 
   return {
     transactions,
