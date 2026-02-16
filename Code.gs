@@ -31,7 +31,7 @@ function readExchangeData() {
 }
 
 function appendData(dateStr, rate, twd) {
-  const sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheetTotal USD();
 
   // 驗證日期格式並轉換
   const date = new Date(dateStr);
@@ -45,9 +45,9 @@ function appendData(dateStr, rate, twd) {
     throw new Error('匯率必須是大於 0 的數字');
   }
 
-  // 驗證交易金額
-  if (typeof twd !== 'number' || isNaN(twd) || twd < 0) {
-    throw new Error('交易金額必須是大於或等於 0 的數字');
+  // Validate TWD amount (allow negative for withdrawals)
+  if (typeof twd !== 'number' || isNaN(twd)) {
+    throw new Error('交易金額必須為有效數字（正數=存入，負數=提領）');
   }
 
   // 計算 USD
@@ -74,22 +74,28 @@ function getSummaryStats() {
 }
 
 function onFormSubmit(e) {
+  // Only run when triggered by form submit (e is provided by Google). Manual run has no e.
+  if (!e || !e.values) {
+    Logger.log('onFormSubmit: no event data (run from Form submit, not manually).');
+    return;
+  }
   const formData = e.values;
 
-  // 對應 Form Responses 頁籤欄位順序
+  // Form Responses column order: timestamp, trade date, rate, TWD
   const formTimestamp = formData[0]; // 表單送出時間
   const tradeDateStr = formData[1];  // 交易日期
   const rate = parseFloat(formData[2]); // 匯率
   const twd = parseFloat(formData[3]);  // TWD 金額
 
-  // 防呆檢查
-  if (isNaN(rate) || rate <= 0 || isNaN(twd) || twd < 0) {
-    Logger.log('❌ 錯誤輸入略過：rate=' + rate + ' / twd=' + twd);
+  // Validate: rate must be positive; TWD can be negative (withdrawal)
+  if (isNaN(rate) || rate <= 0 || isNaN(twd)) {
+    Logger.log('❌ Invalid input skipped: rate=' + rate + ' / twd=' + twd);
     return;
   }
 
   const tradeDate = new Date(tradeDateStr);
   tradeDate.setHours(0, 0, 0, 0);
+  // USD = TWD / rate (negative TWD => negative USD for withdrawals)
   const usd = twd / rate;
 
   const targetSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('exchange_rate');
